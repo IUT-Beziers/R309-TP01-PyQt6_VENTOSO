@@ -46,6 +46,7 @@ class FenetreAuth(QMainWindow):
         login.editUser.returnPressed.connect(self.entree_dans_utilisateur)
         login.editPassword.returnPressed.connect(login.btnLogin.click)
         login.btnLogin.clicked.connect(self.on_login)
+        self.page_result.btnLogout.clicked.connect(self.on_logout)
 
         login.editUser.setFocus()
 
@@ -82,6 +83,10 @@ class FenetreAuth(QMainWindow):
         self.page_login.editPassword.clear()
         self.page_result.lblBienvenue.setText(f"Bienvenue {nom} !")
         self.pile.setCurrentIndex(PAGE_RESULT)
+
+    def on_logout(self):
+        self.pile.setCurrentIndex(PAGE_LOGIN)
+        self.page_login.editUser.setFocus()
 
 
 def main():
