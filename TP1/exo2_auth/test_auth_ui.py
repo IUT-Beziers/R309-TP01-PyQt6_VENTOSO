@@ -6,7 +6,6 @@ Le mode réseau est testé face au micro-service de test (serveur_test.py).
 import asyncio
 import os
 import unittest
-from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -45,6 +44,10 @@ class TestModeLocal(unittest.TestCase):
 
     def tearDown(self):
         self.fenetre.close()
+
+    def fermer_boite(self):
+        if self.fenetre.boite_erreur is not None:
+            self.fenetre.boite_erreur.close()
 
     def saisir(self, nom, mot_de_passe):
         self.login.editUser.setText(nom)
@@ -90,12 +93,16 @@ class TestModeLocal(unittest.TestCase):
 
     def test_echec_affiche_une_boite_de_dialogue(self):
         self.saisir("alice", "mauvais")
-        with patch("auth_app.QMessageBox.warning") as boite:
-            self.login.btnLogin.click()
-            laisser_tourner()
-        boite.assert_called_once()
+        self.login.btnLogin.click()
+        laisser_tourner()
+        boite = self.fenetre.boite_erreur
+        self.assertIsNotNone(boite)
+        self.assertTrue(boite.isVisible())
+        self.assertIn("incorrect", boite.text())
         self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
         self.assertEqual(self.login.editPassword.text(), "")
+        self.fermer_boite()
+        self.assertIsNone(self.fenetre.boite_erreur)
 
     def test_deconnexion_revient_a_la_page_de_login(self):
         self.saisir("clark", "clark")
@@ -132,6 +139,8 @@ class TestModeReseau(unittest.TestCase):
         self.result = self.fenetre.page_result
 
     def tearDown(self):
+        if self.fenetre.boite_erreur is not None:
+            self.fenetre.boite_erreur.close()
         self.fenetre.close()
         executer(self.serveur.close())
 
@@ -156,22 +165,20 @@ class TestModeReseau(unittest.TestCase):
         self.assertEqual(self.result.lblBienvenue.text(), "Bienvenue bob !")
 
     def test_mauvais_mot_de_passe(self):
-        with patch("auth_app.QMessageBox.warning") as boite:
-            self.connecter("alice", "faux")
-        boite.assert_called_once()
+        self.connecter("alice", "faux")
+        self.assertIsNotNone(self.fenetre.boite_erreur)
+        self.assertIn("incorrect", self.fenetre.boite_erreur.text())
         self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
         self.assertIsNone(self.fenetre.token)
 
     def test_serveur_injoignable(self):
         self.fenetre.url_login = "http://127.0.0.1:9/login"
-        with patch("auth_app.QMessageBox.warning") as boite:
-            self.connecter("alice", "alice")
-        self.assertIn("injoignable", boite.call_args.args[2])
+        self.connecter("alice", "alice")
+        self.assertIn("injoignable", self.fenetre.boite_erreur.text())
         self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
 
     def test_formulaire_reactive_apres_echec(self):
-        with patch("auth_app.QMessageBox.warning"):
-            self.connecter("alice", "faux")
+        self.connecter("alice", "faux")
         self.assertTrue(self.login.editUser.isEnabled())
         self.assertTrue(self.login.editPassword.isEnabled())
         self.assertFalse(self.login.btnLogin.isEnabled())  # mot de passe vidé

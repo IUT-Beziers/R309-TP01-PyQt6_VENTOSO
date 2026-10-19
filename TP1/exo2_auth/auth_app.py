@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from PyQt6 import uic
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
                              QStackedWidget)
 from qasync import QEventLoop, asyncSlot
@@ -41,6 +42,7 @@ class FenetreAuth(QMainWindow):
         self.url_login = url_login
         self.url_verif = url_verif
         self.token = None
+        self.boite_erreur = None
         self.mode_local = mode_local
         self.utilisateurs = charger_utilisateurs(fichier_utilisateurs) if mode_local else {}
 
@@ -94,7 +96,7 @@ class FenetreAuth(QMainWindow):
             token, utilisateur = await self.authentifier(nom, mot_de_passe)
         except ErreurAuth as erreur:
             login.editPassword.clear()
-            QMessageBox.warning(self, "Échec de l'authentification", str(erreur))
+            self.afficher_erreur(str(erreur))
         else:
             self.token = token
             self.afficher_resultat(utilisateur)
@@ -121,6 +123,24 @@ class FenetreAuth(QMainWindow):
             login.editPassword.setFocus()
         else:
             login.btnLogin.setEnabled(False)
+
+    def afficher_erreur(self, message):
+        """Boîte de dialogue d'erreur NON bloquante.
+
+        QMessageBox.warning() lance une boucle d'évènements imbriquée, ce qui
+        gêne asyncio/qasync quand on l'appelle depuis une coroutine : on utilise
+        donc open(), qui affiche la boîte (modale pour la fenêtre) et rend la main.
+        """
+        boite = QMessageBox(QMessageBox.Icon.Warning, "Échec de l'authentification",
+                            message, QMessageBox.StandardButton.Ok, self)
+        boite.setWindowModality(Qt.WindowModality.WindowModal)
+        boite.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        boite.finished.connect(self.boite_fermee)
+        boite.open()
+        self.boite_erreur = boite
+
+    def boite_fermee(self):
+        self.boite_erreur = None
 
     # ----- Page de résultat -----
     def afficher_resultat(self, nom):
