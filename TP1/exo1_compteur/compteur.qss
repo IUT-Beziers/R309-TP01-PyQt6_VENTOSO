@@ -21,6 +21,16 @@ QPushButton {
     min-height: 60px;
 }
 
+/* Bouton "+" : vert, plus clair au survol, plus foncé au clic */
+QPushButton#boutonPlus { background-color: #44bd32; }
+QPushButton#boutonPlus:hover { background-color: #4cd137; }
+QPushButton#boutonPlus:pressed { background-color: #2c7a22; }
+
+/* Bouton "-" : rouge, plus clair au survol, plus foncé au clic */
+QPushButton#boutonMoins { background-color: #e84118; }
+QPushButton#boutonMoins:hover { background-color: #ff6348; }
+QPushButton#boutonMoins:pressed { background-color: #8c2711; }
+
 /* Bouton inactif (valeur 0 ou 100) */
 QPushButton:disabled {
     background-color: #bdc3c7;
