@@ -27,6 +27,12 @@ boucle = QEventLoop(app)
 asyncio.set_event_loop(boucle)
 
 
+def setUpModule():
+    # d'autres modules de tests (IsolatedAsyncioTestCase) retirent la boucle courante :
+    # on réinstalle la boucle qasync avant de lancer les tests de l'interface
+    asyncio.set_event_loop(boucle)
+
+
 def parametres_jetables(cas_de_test):
     """Parametres écrivant dans un .ini temporaire (le vrai fichier n'est pas touché)."""
     dossier = tempfile.TemporaryDirectory()
