@@ -111,9 +111,16 @@ class FenetreAuth(QMainWindow):
         self.page_login.editUser.clear()
         self.page_login.editPassword.clear()
         self.page_result.lblBienvenue.setText(f"Bienvenue {nom} !")
+        # hide()/show() : la case n'a de sens que s'il existe un TOKEN
+        if self.token:
+            self.page_result.chkDeleteToken.show()
+        else:
+            self.page_result.chkDeleteToken.hide()
         self.pile.setCurrentIndex(PAGE_RESULT)
 
     def on_logout(self):
+        if self.page_result.chkDeleteToken.isChecked():
+            self.token = None
         self.pile.setCurrentIndex(PAGE_LOGIN)
         self.page_login.editUser.setFocus()
 
