@@ -1,0 +1,28 @@
+/* Feuille de style de l'application compteur */
+
+QWidget {
+    background-color: #f5f6fa;
+    font-family: Arial, sans-serif;
+}
+
+QLabel#valeur {
+    font-size: 56px;
+    font-weight: bold;
+    color: #2f3640;
+    background: transparent;
+}
+
+QPushButton {
+    font-size: 28px;
+    font-weight: bold;
+    color: white;
+    border-radius: 8px;
+    min-width: 90px;
+    min-height: 60px;
+}
+
+/* Bouton inactif (valeur 0 ou 100) */
+QPushButton:disabled {
+    background-color: #bdc3c7;
+    color: #7f8c8d;
+}
