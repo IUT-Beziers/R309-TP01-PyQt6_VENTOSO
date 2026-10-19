@@ -4,7 +4,9 @@ Deux pages créées avec Qt Designer (login.ui et result.ui) sont placées
 dans un QStackedWidget. Les identifiants sont vérifiés par un micro-service
 HTTP, de façon asynchrone (asyncio + qasync) : une première requête obtient
 un TOKEN, une seconde requête vérifie ce TOKEN.
+Avec l'option --local, on retrouve la vérification locale de l'exercice 2.1.
 """
+import argparse
 import asyncio
 import logging
 import sys
@@ -16,8 +18,10 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
 from qasync import QEventLoop, asyncSlot
 
 from auth_client import ErreurAuth, get_token, verify_token
+from auth_local import charger_utilisateurs, verifier_identifiants
 
 DOSSIER = Path(__file__).resolve().parent
+FICHIER_UTILISATEURS = DOSSIER / "users.sha256"
 URL_LOGIN = "http://localhost:4567/login"
 URL_VERIF = "http://localhost:4567/verify"
 FICHIER_QSS = DOSSIER / "style-auth.qss"
@@ -29,13 +33,16 @@ PAGE_RESULT = 1
 class FenetreAuth(QMainWindow):
     """Fenêtre principale : une pile de pages (connexion / résultat)."""
 
-    def __init__(self, url_login=URL_LOGIN, url_verif=URL_VERIF):
+    def __init__(self, url_login=URL_LOGIN, url_verif=URL_VERIF, mode_local=False,
+                 fichier_utilisateurs=FICHIER_UTILISATEURS):
         super().__init__()
         self.setWindowTitle("Authentification")
         self.resize(420, 320)
         self.url_login = url_login
         self.url_verif = url_verif
         self.token = None
+        self.mode_local = mode_local
+        self.utilisateurs = charger_utilisateurs(fichier_utilisateurs) if mode_local else {}
 
         # Chargement des deux interfaces dessinées avec Designer
         self.page_login = uic.loadUi(DOSSIER / "login.ui")
@@ -84,16 +91,25 @@ class FenetreAuth(QMainWindow):
         mot_de_passe = login.editPassword.text()
         self.activer_saisie(False)
         try:
-            token = await get_token(self.url_login, nom, mot_de_passe)
-            reponse = await verify_token(self.url_verif, token)
+            token, utilisateur = await self.authentifier(nom, mot_de_passe)
         except ErreurAuth as erreur:
             login.editPassword.clear()
             QMessageBox.warning(self, "Échec de l'authentification", str(erreur))
         else:
             self.token = token
-            self.afficher_resultat(reponse.get("user", nom))
+            self.afficher_resultat(utilisateur)
         finally:
             self.activer_saisie(True)
+
+    async def authentifier(self, nom, mot_de_passe):
+        """Retourne (token, utilisateur) ou lève ErreurAuth."""
+        if self.mode_local:
+            if not verifier_identifiants(self.utilisateurs, nom, mot_de_passe):
+                raise ErreurAuth("Nom d'utilisateur ou mot de passe incorrect.")
+            return None, nom
+        token = await get_token(self.url_login, nom, mot_de_passe)
+        reponse = await verify_token(self.url_verif, token)
+        return token, reponse.get("user", nom)
 
     def activer_saisie(self, actif):
         """Bloque ou débloque le formulaire pendant les requêtes réseau."""
@@ -126,8 +142,13 @@ class FenetreAuth(QMainWindow):
 
 
 def main():
+    analyseur = argparse.ArgumentParser(description="Application d'authentification")
+    analyseur.add_argument("--local", action="store_true",
+                           help="vérifier les identifiants avec users.sha256 (sans réseau)")
+    options, restants = analyseur.parse_known_args()
+
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    app = QApplication(sys.argv)
+    app = QApplication([sys.argv[0]] + restants)
     app.setStyleSheet(FICHIER_QSS.read_text(encoding="utf-8"))
 
     # qasync : la boucle asyncio est fusionnée avec la boucle d'évènements de Qt
@@ -136,7 +157,7 @@ def main():
     fin = asyncio.Event()
     app.aboutToQuit.connect(fin.set)
 
-    fenetre = FenetreAuth()
+    fenetre = FenetreAuth(mode_local=options.local)
     fenetre.show()
     with boucle:
         boucle.run_until_complete(fin.wait())
