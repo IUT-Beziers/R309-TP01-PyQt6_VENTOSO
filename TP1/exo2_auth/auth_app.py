@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
                              QStackedWidget)
 from qasync import QEventLoop, asyncSlot
 
-from auth_client import ErreurAuth, get_token, verify_token
+from auth_client import ErreurAuth, ErreurReseau, get_token, verify_token
 from auth_local import charger_utilisateurs, verifier_identifiants
 from parametres import Parametres
 
@@ -61,7 +61,13 @@ class FenetreAuth(QMainWindow):
         login.btnLogin.clicked.connect(self.on_login)
         self.page_result.btnLogout.clicked.connect(self.on_logout)
 
-        login.editUser.setFocus()
+        self.page_result.btnVerify.clicked.connect(self.on_verify)
+
+        # Un TOKEN mémorisé lors d'un lancement précédent ?
+        if self.token and not self.mode_local:
+            self.afficher_token_existant()
+        else:
+            login.editUser.setFocus()
 
     @property
     def token(self):
@@ -153,13 +159,47 @@ class FenetreAuth(QMainWindow):
     def afficher_resultat(self, nom):
         self.page_login.editUser.clear()
         self.page_login.editPassword.clear()
-        self.page_result.lblBienvenue.setText(f"Bienvenue {nom} !")
+        resultat = self.page_result
+        resultat.lblBienvenue.setText(f"Bienvenue {nom} !")
         # hide()/show() : la case n'a de sens que s'il existe un TOKEN
+        resultat.btnVerify.hide()
+        resultat.btnLogout.show()
         if self.token:
-            self.page_result.chkDeleteToken.show()
+            resultat.chkDeleteToken.show()
         else:
-            self.page_result.chkDeleteToken.hide()
+            resultat.chkDeleteToken.hide()
         self.pile.setCurrentIndex(PAGE_RESULT)
+
+    def afficher_token_existant(self):
+        """Un TOKEN est mémorisé : on propose de le vérifier ou de s'en débarrasser."""
+        resultat = self.page_result
+        resultat.lblBienvenue.setText("Token exists")
+        resultat.btnVerify.show()
+        resultat.chkDeleteToken.show()
+        resultat.btnLogout.show()
+        self.pile.setCurrentIndex(PAGE_RESULT)
+
+    @asyncSlot()
+    async def on_verify(self):
+        await self.verifier_token_memorise()
+
+    async def verifier_token_memorise(self):
+        """Vérifie le TOKEN mémorisé auprès du serveur (une seule requête)."""
+        bouton = self.page_result.btnVerify
+        bouton.setEnabled(False)
+        try:
+            reponse = await verify_token(self.parametres.verif_url, self.token)
+        except ErreurReseau as erreur:
+            self.afficher_erreur(str(erreur))          # le TOKEN est conservé
+        except ErreurAuth as erreur:
+            self.token = None                           # TOKEN refusé : on l'efface
+            self.afficher_erreur(f"{erreur} Il a été supprimé.")
+            self.pile.setCurrentIndex(PAGE_LOGIN)
+            self.page_login.editUser.setFocus()
+        else:
+            self.afficher_resultat(reponse.get("user", "?"))
+        finally:
+            bouton.setEnabled(True)
 
     def on_logout(self):
         if not self.mode_local and self.page_result.chkDeleteToken.isChecked():
