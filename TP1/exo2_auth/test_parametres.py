@@ -8,7 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QSettings
 
-from parametres import (URL_LOGIN_PAR_DEFAUT, URL_VERIF_PAR_DEFAUT, Parametres)
+from parametres import (URL_LOGIN_PAR_DEFAUT, URL_VERIF_PAR_DEFAUT, Parametres,
+                        url_valide)
 
 
 def reglages_temporaires(dossier: str) -> QSettings:
@@ -51,6 +52,18 @@ class TestParametres(unittest.TestCase):
         p.token = "xyz"
         contenu = (Path(self.dossier.name) / "test.ini").read_text(encoding="utf-8")
         self.assertIn("token=xyz", contenu)
+
+
+class TestUrlValide(unittest.TestCase):
+    def test_urls_acceptees(self):
+        for url in ("http://localhost:4567/login", "https://exemple.fr/verify",
+                    "http://10.42.227.111:4567/login", " http://localhost:4567/x "):
+            self.assertTrue(url_valide(url), url)
+
+    def test_urls_refusees(self):
+        for url in ("", "localhost:4567/login", "ftp://localhost/login",
+                    "http://", "n'importe quoi", "http://[::1"):
+            self.assertFalse(url_valide(url), url)
 
 
 if __name__ == "__main__":

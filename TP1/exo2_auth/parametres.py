@@ -7,6 +7,8 @@ Valeurs conservées d'un lancement à l'autre :
 
 Sous Linux, le fichier est ~/.config/R309/Authentification.ini
 """
+from urllib.parse import urlparse
+
 from PyQt6.QtCore import QSettings
 
 ORGANISATION = "R309"
@@ -18,6 +20,15 @@ URL_VERIF_PAR_DEFAUT = "http://localhost:4567/verify"
 CLE_LOGIN = "auth/login_url"
 CLE_VERIF = "auth/verif_url"
 CLE_TOKEN = "auth/token"
+
+
+def url_valide(url: str) -> bool:
+    """Vrai pour une URL http(s) avec un nom de machine, ex. http://localhost:4567/login."""
+    try:
+        analyse = urlparse(url.strip())
+        return analyse.scheme in ("http", "https") and bool(analyse.hostname)
+    except ValueError:
+        return False
 
 
 class Parametres:
