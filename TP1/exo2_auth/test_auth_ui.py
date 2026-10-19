@@ -5,22 +5,33 @@ Le mode réseau est testé face au micro-service de test (serveur_test.py).
 """
 import asyncio
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from aiohttp.test_utils import TestServer
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 from qasync import QEventLoop
 
 from auth_app import FICHIER_QSS, PAGE_LOGIN, PAGE_RESULT, FenetreAuth
+from parametres import Parametres
 from serveur_test import creer_application
 
 app = QApplication.instance() or QApplication([])
 boucle = QEventLoop(app)
 asyncio.set_event_loop(boucle)
+
+
+def parametres_jetables(cas_de_test):
+    """Parametres écrivant dans un .ini temporaire (le vrai fichier n'est pas touché)."""
+    dossier = tempfile.TemporaryDirectory()
+    cas_de_test.addCleanup(dossier.cleanup)
+    reglages = QSettings(str(Path(dossier.name) / "test.ini"), QSettings.Format.IniFormat)
+    return Parametres(reglages)
 
 
 def executer(coroutine):
@@ -37,7 +48,7 @@ class TestModeLocal(unittest.TestCase):
     """Vérification locale avec users.sha256 (exercice 2.1)."""
 
     def setUp(self):
-        self.fenetre = FenetreAuth(mode_local=True)
+        self.fenetre = FenetreAuth(parametres_jetables(self), mode_local=True)
         self.fenetre.show()
         self.login = self.fenetre.page_login
         self.result = self.fenetre.page_result
@@ -131,9 +142,10 @@ class TestModeReseau(unittest.TestCase):
     def setUp(self):
         self.serveur = TestServer(creer_application())
         executer(self.serveur.start_server())
-        self.fenetre = FenetreAuth(
-            url_login=str(self.serveur.make_url("/login")),
-            url_verif=str(self.serveur.make_url("/verify")))
+        self.parametres = parametres_jetables(self)
+        self.parametres.login_url = str(self.serveur.make_url("/login"))
+        self.parametres.verif_url = str(self.serveur.make_url("/verify"))
+        self.fenetre = FenetreAuth(self.parametres)
         self.fenetre.show()
         self.login = self.fenetre.page_login
         self.result = self.fenetre.page_result
@@ -172,7 +184,7 @@ class TestModeReseau(unittest.TestCase):
         self.assertIsNone(self.fenetre.token)
 
     def test_serveur_injoignable(self):
-        self.fenetre.url_login = "http://127.0.0.1:9/login"
+        self.parametres.login_url = "http://127.0.0.1:9/login"
         self.connecter("alice", "alice")
         self.assertIn("injoignable", self.fenetre.boite_erreur.text())
         self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
@@ -195,6 +207,7 @@ class TestModeReseau(unittest.TestCase):
         self.result.chkDeleteToken.setChecked(False)
         self.result.btnLogout.click()
         self.assertIsNotNone(self.fenetre.token)
+        self.assertIsNotNone(self.parametres.token)  # toujours présent dans les réglages
 
 
 if __name__ == "__main__":

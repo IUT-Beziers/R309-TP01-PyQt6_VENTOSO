@@ -20,11 +20,10 @@ from qasync import QEventLoop, asyncSlot
 
 from auth_client import ErreurAuth, get_token, verify_token
 from auth_local import charger_utilisateurs, verifier_identifiants
+from parametres import Parametres
 
 DOSSIER = Path(__file__).resolve().parent
 FICHIER_UTILISATEURS = DOSSIER / "users.sha256"
-URL_LOGIN = "http://localhost:4567/login"
-URL_VERIF = "http://localhost:4567/verify"
 FICHIER_QSS = DOSSIER / "style-auth.qss"
 
 PAGE_LOGIN = 0
@@ -34,14 +33,12 @@ PAGE_RESULT = 1
 class FenetreAuth(QMainWindow):
     """Fenêtre principale : une pile de pages (connexion / résultat)."""
 
-    def __init__(self, url_login=URL_LOGIN, url_verif=URL_VERIF, mode_local=False,
+    def __init__(self, parametres=None, mode_local=False,
                  fichier_utilisateurs=FICHIER_UTILISATEURS):
         super().__init__()
         self.setWindowTitle("Authentification")
         self.resize(420, 320)
-        self.url_login = url_login
-        self.url_verif = url_verif
-        self.token = None
+        self.parametres = parametres or Parametres()
         self.boite_erreur = None
         self.mode_local = mode_local
         self.utilisateurs = charger_utilisateurs(fichier_utilisateurs) if mode_local else {}
@@ -65,6 +62,15 @@ class FenetreAuth(QMainWindow):
         self.page_result.btnLogout.clicked.connect(self.on_logout)
 
         login.editUser.setFocus()
+
+    @property
+    def token(self):
+        """Le TOKEN est mémorisé dans les paramètres (QSettings)."""
+        return self.parametres.token
+
+    @token.setter
+    def token(self, valeur):
+        self.parametres.token = valeur
 
     # ----- Page de connexion -----
     def maj_bouton_login(self):
@@ -98,7 +104,8 @@ class FenetreAuth(QMainWindow):
             login.editPassword.clear()
             self.afficher_erreur(str(erreur))
         else:
-            self.token = token
+            if token:  # pas de token en mode local : on ne touche pas au TOKEN mémorisé
+                self.token = token
             self.afficher_resultat(utilisateur)
         finally:
             self.activer_saisie(True)
@@ -109,8 +116,8 @@ class FenetreAuth(QMainWindow):
             if not verifier_identifiants(self.utilisateurs, nom, mot_de_passe):
                 raise ErreurAuth("Nom d'utilisateur ou mot de passe incorrect.")
             return None, nom
-        token = await get_token(self.url_login, nom, mot_de_passe)
-        reponse = await verify_token(self.url_verif, token)
+        token = await get_token(self.parametres.login_url, nom, mot_de_passe)
+        reponse = await verify_token(self.parametres.verif_url, token)
         return token, reponse.get("user", nom)
 
     def activer_saisie(self, actif):
@@ -155,7 +162,7 @@ class FenetreAuth(QMainWindow):
         self.pile.setCurrentIndex(PAGE_RESULT)
 
     def on_logout(self):
-        if self.page_result.chkDeleteToken.isChecked():
+        if not self.mode_local and self.page_result.chkDeleteToken.isChecked():
             self.token = None
         self.pile.setCurrentIndex(PAGE_LOGIN)
         self.page_login.editUser.setFocus()
