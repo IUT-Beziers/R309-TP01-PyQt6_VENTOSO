@@ -17,7 +17,8 @@ from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 from qasync import QEventLoop
 
-from auth_app import FICHIER_QSS, PAGE_LOGIN, PAGE_RESULT, FenetreAuth
+from auth_app import (FICHIER_QSS, PAGE_LOGIN, PAGE_RESULT, PAGE_SETTINGS,
+                      FenetreAuth)
 from parametres import Parametres
 from serveur_test import creer_application, creer_jeton
 
@@ -66,7 +67,7 @@ class TestModeLocal(unittest.TestCase):
 
     def test_page_initiale_et_proprietes(self):
         self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
-        self.assertEqual(self.fenetre.pile.count(), 2)
+        self.assertEqual(self.fenetre.pile.count(), 3)  # login, résultat, paramètres
         self.assertEqual(self.login.editUser.placeholderText(), "Nom d'utilisateur")
         self.assertEqual(self.login.editPassword.placeholderText(), "Mot de passe")
         self.assertEqual(self.login.editPassword.echoMode(),
@@ -292,6 +293,82 @@ class TestTokenMemorise(unittest.TestCase):
         fenetre = FenetreAuth(self.parametres, mode_local=True)
         self.fenetres.append(fenetre)
         self.assertEqual(fenetre.pile.currentIndex(), PAGE_LOGIN)
+
+
+class TestPageParametres(unittest.TestCase):
+    """Barre d'outils et page de modification des URL (exercice 2.4)."""
+
+    def setUp(self):
+        self.serveur = TestServer(creer_application())
+        executer(self.serveur.start_server())
+        self.parametres = parametres_jetables(self)
+        self.fenetre = FenetreAuth(self.parametres)
+        self.fenetre.show()
+        self.settings = self.fenetre.page_settings
+
+    def tearDown(self):
+        if self.fenetre.boite_erreur is not None:
+            self.fenetre.boite_erreur.close()
+        self.fenetre.close()
+        executer(self.serveur.close())
+
+    def test_action_presente_dans_la_barre_d_outils(self):
+        self.assertIn(self.fenetre.action_settings, self.fenetre.barre_outils.actions())
+        self.assertEqual(self.fenetre.pile.count(), 3)
+
+    def test_action_affiche_la_page_avec_les_urls_courantes(self):
+        self.fenetre.action_settings.trigger()
+        self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_SETTINGS)
+        self.assertEqual(self.settings.editLoginUrl.text(), "http://localhost:4567/login")
+        self.assertEqual(self.settings.editVerifUrl.text(), "http://localhost:4567/verify")
+
+    def test_second_clic_revient_a_la_page_precedente(self):
+        self.fenetre.action_settings.trigger()
+        self.fenetre.action_settings.trigger()
+        self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
+
+    def test_valider_memorise_les_urls(self):
+        self.fenetre.action_settings.trigger()
+        self.settings.editLoginUrl.setText("http://10.42.227.111:4567/login")
+        self.settings.editVerifUrl.setText("http://10.42.227.111:4567/verify")
+        self.settings.btnValider.click()
+        self.assertEqual(self.parametres.login_url, "http://10.42.227.111:4567/login")
+        self.assertEqual(self.parametres.verif_url, "http://10.42.227.111:4567/verify")
+        self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_LOGIN)
+        self.assertFalse(self.fenetre.action_settings.isChecked())
+
+    def test_valider_par_la_touche_entree(self):
+        self.fenetre.action_settings.trigger()
+        self.settings.editLoginUrl.setText("https://exemple.fr/login")
+        QTest.keyClick(self.settings.editVerifUrl, Qt.Key.Key_Return)
+        self.assertEqual(self.parametres.login_url, "https://exemple.fr/login")
+
+    def test_url_invalide_refusee(self):
+        self.fenetre.action_settings.trigger()
+        self.settings.editLoginUrl.setText("pas une url")
+        self.settings.btnValider.click()
+        self.assertIsNotNone(self.fenetre.boite_erreur)
+        self.assertEqual(self.fenetre.pile.currentIndex(), PAGE_SETTINGS)
+        self.assertEqual(self.parametres.login_url, "http://localhost:4567/login")
+
+    def test_retour_a_la_page_resultat_si_on_en_vient(self):
+        self.parametres.token = creer_jeton("alice")
+        fenetre = FenetreAuth(self.parametres)
+        fenetre.show()
+        fenetre.action_settings.trigger()
+        fenetre.action_settings.trigger()
+        self.assertEqual(fenetre.pile.currentIndex(), PAGE_RESULT)
+        fenetre.close()
+
+    def test_connexion_avec_les_urls_saisies_dans_l_application(self):
+        self.fenetre.action_settings.trigger()
+        self.settings.editLoginUrl.setText(str(self.serveur.make_url("/login")))
+        self.settings.editVerifUrl.setText(str(self.serveur.make_url("/verify")))
+        self.settings.btnValider.click()
+        self.fenetre.page_login.editUser.setText("clark")
+        self.fenetre.page_login.editPassword.setText("clark")
+        executer(self.fenetre.connecter())
+        self.assertEqual(self.fenetre.page_result.lblBienvenue.text(), "Bienvenue clark !")
 
 
 if __name__ == "__main__":
