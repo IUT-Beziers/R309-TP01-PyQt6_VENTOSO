@@ -19,3 +19,6 @@ QPushButton:pressed { background-color: #0077b6; }
 QPushButton#btnLogout { background-color: #e84118; }
 QPushButton#btnLogout:hover { background-color: #c23616; }
 QPushButton#btnLogout:pressed { background-color: #8c2711; }
+
+/* Case à cocher "Delete TOKEN" */
+QCheckBox { background: transparent; color: #2f3640; }
