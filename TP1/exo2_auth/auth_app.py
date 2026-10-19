@@ -1,10 +1,12 @@
-"""TP1 - Exercice 2.1 : application d'authentification (PyQt6 + Designer).
+"""TP1 - Exercice 2 : application d'authentification (PyQt6 + Designer).
 
-Deux pages créées avec Qt Designer (login.ui et result.ui) sont placées
-dans un QStackedWidget. Les identifiants sont vérifiés par un micro-service
-HTTP, de façon asynchrone (asyncio + qasync) : une première requête obtient
-un TOKEN, une seconde requête vérifie ce TOKEN.
-Avec l'option --local, on retrouve la vérification locale de l'exercice 2.1.
+Trois pages créées avec Qt Designer (login.ui, result.ui et settings.ui) sont
+placées dans un QStackedWidget. Les identifiants sont vérifiés par un
+micro-service HTTP, de façon asynchrone (asyncio + qasync) : une première
+requête obtient un TOKEN, une seconde requête vérifie ce TOKEN.
+Les URL et le TOKEN sont mémorisés avec QSettings ; une barre d'outils permet
+de modifier les URL. Avec l'option --local, on retrouve la vérification locale
+de l'exercice 2.1.
 """
 import argparse
 import asyncio
@@ -14,13 +16,14 @@ from pathlib import Path
 
 from PyQt6 import uic
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
-                             QStackedWidget)
+                             QStackedWidget, QStyle, QToolBar)
 from qasync import QEventLoop, asyncSlot
 
 from auth_client import ErreurAuth, ErreurReseau, get_token, verify_token
 from auth_local import charger_utilisateurs, verifier_identifiants
-from parametres import Parametres
+from parametres import Parametres, url_valide
 
 DOSSIER = Path(__file__).resolve().parent
 FICHIER_UTILISATEURS = DOSSIER / "users.sha256"
@@ -28,6 +31,7 @@ FICHIER_QSS = DOSSIER / "style-auth.qss"
 
 PAGE_LOGIN = 0
 PAGE_RESULT = 1
+PAGE_SETTINGS = 2
 
 
 class FenetreAuth(QMainWindow):
@@ -46,11 +50,23 @@ class FenetreAuth(QMainWindow):
         # Chargement des deux interfaces dessinées avec Designer
         self.page_login = uic.loadUi(DOSSIER / "login.ui")
         self.page_result = uic.loadUi(DOSSIER / "result.ui")
+        self.page_settings = uic.loadUi(DOSSIER / "settings.ui")
 
         self.pile = QStackedWidget()
-        self.pile.addWidget(self.page_login)    # index 0
-        self.pile.addWidget(self.page_result)   # index 1
+        self.pile.addWidget(self.page_login)      # index 0
+        self.pile.addWidget(self.page_result)     # index 1
+        self.pile.addWidget(self.page_settings)   # index 2
         self.setCentralWidget(self.pile)
+        self.page_avant_settings = PAGE_LOGIN
+
+        # Barre d'outils : une action (cochable) qui affiche/masque la page des URL
+        icone = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)
+        self.action_settings = QAction(icone, "Paramètres des URL", self)
+        self.action_settings.setCheckable(True)
+        self.action_settings.setToolTip("Modifier les URL d'authentification")
+        self.barre_outils = QToolBar("Outils")
+        self.barre_outils.addAction(self.action_settings)
+        self.addToolBar(self.barre_outils)
 
         # Signaux / slots
         login = self.page_login
@@ -62,6 +78,10 @@ class FenetreAuth(QMainWindow):
         self.page_result.btnLogout.clicked.connect(self.on_logout)
 
         self.page_result.btnVerify.clicked.connect(self.on_verify)
+        self.action_settings.toggled.connect(self.basculer_settings)
+        self.page_settings.btnValider.clicked.connect(self.on_valider_settings)
+        for champ in (self.page_settings.editLoginUrl, self.page_settings.editVerifUrl):
+            champ.returnPressed.connect(self.page_settings.btnValider.click)
 
         # Un TOKEN mémorisé lors d'un lancement précédent ?
         if self.token and not self.mode_local:
@@ -131,21 +151,21 @@ class FenetreAuth(QMainWindow):
         login = self.page_login
         login.editUser.setEnabled(actif)
         login.editPassword.setEnabled(actif)
+        self.action_settings.setEnabled(actif)
         if actif:
             self.maj_bouton_login()
             login.editPassword.setFocus()
         else:
             login.btnLogin.setEnabled(False)
 
-    def afficher_erreur(self, message):
+    def afficher_erreur(self, message, titre="Échec de l'authentification"):
         """Boîte de dialogue d'erreur NON bloquante.
 
         QMessageBox.warning() lance une boucle d'évènements imbriquée, ce qui
         gêne asyncio/qasync quand on l'appelle depuis une coroutine : on utilise
         donc open(), qui affiche la boîte (modale pour la fenêtre) et rend la main.
         """
-        boite = QMessageBox(QMessageBox.Icon.Warning, "Échec de l'authentification",
-                            message, QMessageBox.StandardButton.Ok, self)
+        boite = QMessageBox(QMessageBox.Icon.Warning, titre, message, QMessageBox.StandardButton.Ok, self)
         boite.setWindowModality(Qt.WindowModality.WindowModal)
         boite.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         boite.finished.connect(self.boite_fermee)
@@ -187,6 +207,7 @@ class FenetreAuth(QMainWindow):
         """Vérifie le TOKEN mémorisé auprès du serveur (une seule requête)."""
         bouton = self.page_result.btnVerify
         bouton.setEnabled(False)
+        self.action_settings.setEnabled(False)
         try:
             reponse = await verify_token(self.parametres.verif_url, self.token)
         except ErreurReseau as erreur:
@@ -200,12 +221,37 @@ class FenetreAuth(QMainWindow):
             self.afficher_resultat(reponse.get("user", "?"))
         finally:
             bouton.setEnabled(True)
+            self.action_settings.setEnabled(True)
 
     def on_logout(self):
         if not self.mode_local and self.page_result.chkDeleteToken.isChecked():
             self.token = None
         self.pile.setCurrentIndex(PAGE_LOGIN)
         self.page_login.editUser.setFocus()
+
+    # ----- Page des paramètres (3e interface) -----
+    def basculer_settings(self, afficher):
+        """Action de la barre d'outils : affiche la page des URL ou revient à la page précédente."""
+        if afficher:
+            self.page_avant_settings = self.pile.currentIndex()
+            self.page_settings.editLoginUrl.setText(self.parametres.login_url)
+            self.page_settings.editVerifUrl.setText(self.parametres.verif_url)
+            self.pile.setCurrentIndex(PAGE_SETTINGS)
+            self.page_settings.editLoginUrl.setFocus()
+        else:
+            self.pile.setCurrentIndex(self.page_avant_settings)
+
+    def on_valider_settings(self):
+        """Bouton Valider : contrôle les deux URL, les mémorise et ferme la page."""
+        url_login = self.page_settings.editLoginUrl.text().strip()
+        url_verif = self.page_settings.editVerifUrl.text().strip()
+        if not (url_valide(url_login) and url_valide(url_verif)):
+            self.afficher_erreur("Les deux URL doivent commencer par http:// ou https://.",
+                                 "URL invalide")
+            return
+        self.parametres.login_url = url_login
+        self.parametres.verif_url = url_verif
+        self.action_settings.setChecked(False)   # déclenche le retour à la page précédente
 
 
 def main():
