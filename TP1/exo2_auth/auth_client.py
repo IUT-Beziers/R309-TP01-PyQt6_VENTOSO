@@ -25,6 +25,10 @@ class ErreurAuth(Exception):
     """Erreur d'authentification (message lisible, affiché dans une boîte de dialogue)."""
 
 
+class ErreurReseau(ErreurAuth):
+    """Serveur injoignable ou en erreur : le TOKEN, lui, n'est pas forcément invalide."""
+
+
 async def get_token(url_login: str, nom: str, mot_de_passe: str) -> str:
     """Requête 1 : envoie les identifiants et retourne le TOKEN reçu."""
     journal.info("getToken()...\n  AUTH_URL: %s", url_login)
@@ -59,8 +63,8 @@ async def _requete(methode: str, url: str, **options) -> dict:
                     raise ErreurAuth("Nom d'utilisateur, mot de passe ou token incorrect.")
                 if reponse.status >= 400:
                     journal.info("  Erreur HTTP : %s pour %s", reponse.status, url)
-                    raise ErreurAuth(f"Erreur HTTP {reponse.status} pour {url}.")
+                    raise ErreurReseau(f"Erreur HTTP {reponse.status} pour {url}.")
                 return await reponse.json(content_type=None)
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as erreur:
         journal.info("  Erreur réseau : %s", erreur)
-        raise ErreurAuth(f"Serveur injoignable ({url}).") from erreur
+        raise ErreurReseau(f"Serveur injoignable ({url}).") from erreur
