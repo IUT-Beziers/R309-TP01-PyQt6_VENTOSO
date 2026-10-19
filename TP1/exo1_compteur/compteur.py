@@ -4,6 +4,7 @@ Un label affiche une valeur comprise entre 0 et 100.
 Le bouton "+" l'incrémente, le bouton "-" la décrémente.
 """
 import sys
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QPushButton,
@@ -11,6 +12,7 @@ from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QPushButton,
 
 VALEUR_MIN = 0
 VALEUR_MAX = 100
+FICHIER_QSS = Path(__file__).resolve().parent / "compteur.qss"
 
 
 class Compteur(QWidget):
@@ -71,6 +73,7 @@ class Compteur(QWidget):
 
 def main():
     app = QApplication(sys.argv)
+    app.setStyleSheet(FICHIER_QSS.read_text(encoding="utf-8"))
     fenetre = Compteur()
     fenetre.show()
     sys.exit(app.exec())
