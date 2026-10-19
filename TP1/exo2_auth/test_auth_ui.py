@@ -19,7 +19,7 @@ from qasync import QEventLoop
 
 from auth_app import FICHIER_QSS, PAGE_LOGIN, PAGE_RESULT, FenetreAuth
 from parametres import Parametres
-from serveur_test import creer_application
+from serveur_test import creer_application, creer_jeton
 
 app = QApplication.instance() or QApplication([])
 boucle = QEventLoop(app)
@@ -208,6 +208,90 @@ class TestModeReseau(unittest.TestCase):
         self.result.btnLogout.click()
         self.assertIsNotNone(self.fenetre.token)
         self.assertIsNotNone(self.parametres.token)  # toujours présent dans les réglages
+
+
+class TestTokenMemorise(unittest.TestCase):
+    """Paramétrage persistant : le TOKEN survit à la fermeture (exercice 2.3)."""
+
+    def setUp(self):
+        self.serveur = TestServer(creer_application())
+        executer(self.serveur.start_server())
+        self.parametres = parametres_jetables(self)
+        self.parametres.login_url = str(self.serveur.make_url("/login"))
+        self.parametres.verif_url = str(self.serveur.make_url("/verify"))
+        self.fenetres = []
+
+    def tearDown(self):
+        for fenetre in self.fenetres:
+            if fenetre.boite_erreur is not None:
+                fenetre.boite_erreur.close()
+            fenetre.close()
+        executer(self.serveur.close())
+
+    def lancer(self):
+        """Simule un (nouveau) lancement de l'application."""
+        fenetre = FenetreAuth(self.parametres)
+        fenetre.show()
+        self.fenetres.append(fenetre)
+        return fenetre
+
+    def test_sans_token_on_demarre_sur_le_login(self):
+        self.assertEqual(self.lancer().pile.currentIndex(), PAGE_LOGIN)
+
+    def test_token_memorise_apres_connexion(self):
+        premiere = self.lancer()
+        premiere.page_login.editUser.setText("alice")
+        premiere.page_login.editPassword.setText("alice")
+        executer(premiere.connecter())
+        premiere.close()
+        seconde = self.lancer()
+        self.assertEqual(seconde.pile.currentIndex(), PAGE_RESULT)
+        self.assertEqual(seconde.page_result.lblBienvenue.text(), "Token exists")
+        self.assertFalse(seconde.page_result.btnVerify.isHidden())
+
+    def test_verification_du_token_memorise(self):
+        self.parametres.token = creer_jeton("alice")
+        fenetre = self.lancer()
+        executer(fenetre.verifier_token_memorise())
+        self.assertEqual(fenetre.page_result.lblBienvenue.text(), "Bienvenue alice !")
+        self.assertTrue(fenetre.page_result.btnVerify.isHidden())
+
+    def test_token_expire_est_supprime(self):
+        self.parametres.token = creer_jeton("alice", duree=-10)
+        fenetre = self.lancer()
+        executer(fenetre.verifier_token_memorise())
+        self.assertIsNone(self.parametres.token)
+        self.assertEqual(fenetre.pile.currentIndex(), PAGE_LOGIN)
+        self.assertIsNotNone(fenetre.boite_erreur)
+
+    def test_serveur_injoignable_conserve_le_token(self):
+        self.parametres.token = creer_jeton("alice")
+        self.parametres.verif_url = "http://127.0.0.1:9/verify"
+        fenetre = self.lancer()
+        executer(fenetre.verifier_token_memorise())
+        self.assertIsNotNone(self.parametres.token)
+        self.assertEqual(fenetre.pile.currentIndex(), PAGE_RESULT)
+
+    def test_bouton_verify_declenche_la_verification(self):
+        self.parametres.token = creer_jeton("bob")
+        fenetre = self.lancer()
+        fenetre.page_result.btnVerify.click()
+        executer(asyncio.sleep(0.3))
+        self.assertEqual(fenetre.page_result.lblBienvenue.text(), "Bienvenue bob !")
+
+    def test_deconnexion_case_cochee_efface_le_token_memorise(self):
+        self.parametres.token = creer_jeton("alice")
+        fenetre = self.lancer()
+        fenetre.page_result.chkDeleteToken.setChecked(True)
+        fenetre.page_result.btnLogout.click()
+        self.assertIsNone(self.parametres.token)
+        self.assertEqual(fenetre.pile.currentIndex(), PAGE_LOGIN)
+
+    def test_mode_local_ignore_le_token_memorise(self):
+        self.parametres.token = creer_jeton("alice")
+        fenetre = FenetreAuth(self.parametres, mode_local=True)
+        self.fenetres.append(fenetre)
+        self.assertEqual(fenetre.pile.currentIndex(), PAGE_LOGIN)
 
 
 if __name__ == "__main__":

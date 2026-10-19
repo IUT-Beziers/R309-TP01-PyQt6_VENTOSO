@@ -7,7 +7,7 @@ import unittest
 from aiohttp.test_utils import TestServer
 
 import auth_client
-from auth_client import ErreurAuth, get_token, verify_token
+from auth_client import ErreurAuth, ErreurReseau, get_token, verify_token
 from serveur_test import creer_application, creer_jeton
 
 
@@ -44,13 +44,16 @@ class TestClientAuth(unittest.IsolatedAsyncioTestCase):
             await verify_token(self.url_verif, token[:-3] + "xyz")
 
     async def test_verify_token_expire(self):
-        with self.assertRaises(ErreurAuth):
+        # un token refusé n'est PAS une erreur réseau
+        with self.assertRaises(ErreurAuth) as contexte:
             await verify_token(self.url_verif, creer_jeton("bob", duree=-10))
+        self.assertNotIsInstance(contexte.exception, ErreurReseau)
 
     async def test_serveur_injoignable(self):
         with self.assertRaises(ErreurAuth) as contexte:
             await get_token("http://127.0.0.1:9/login", "alice", "alice")
         self.assertIn("injoignable", str(contexte.exception))
+        self.assertIsInstance(contexte.exception, ErreurReseau)
 
     async def test_delai_depasse(self):
         ancien = auth_client.DELAI_MAX
