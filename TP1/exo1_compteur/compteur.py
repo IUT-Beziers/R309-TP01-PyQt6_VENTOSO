@@ -40,6 +40,30 @@ class Compteur(QWidget):
         disposition.addWidget(self.label)
         disposition.addLayout(boutons)
 
+        # Programmation évènementielle : on relie les signaux aux slots.
+        self.bouton_plus.clicked.connect(self.incrementer)
+        self.bouton_moins.clicked.connect(self.decrementer)
+
+        self._maj_affichage()
+
+    @property
+    def valeur(self) -> int:
+        return self._valeur
+
+    def incrementer(self):
+        """Slot du bouton "+" : ajoute 1 sans dépasser VALEUR_MAX."""
+        self._valeur += 1
+        self._maj_affichage()
+
+    def decrementer(self):
+        """Slot du bouton "-" : retire 1 sans passer sous VALEUR_MIN."""
+        self._valeur -= 1
+        self._maj_affichage()
+
+    def _maj_affichage(self):
+        """Met à jour le texte du label."""
+        self.label.setText(str(self._valeur))
+
 
 def main():
     app = QApplication(sys.argv)
