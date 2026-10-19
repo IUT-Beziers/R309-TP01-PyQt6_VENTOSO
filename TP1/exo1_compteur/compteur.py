@@ -52,17 +52,21 @@ class Compteur(QWidget):
 
     def incrementer(self):
         """Slot du bouton "+" : ajoute 1 sans dépasser VALEUR_MAX."""
-        self._valeur += 1
-        self._maj_affichage()
+        if self._valeur < VALEUR_MAX:
+            self._valeur += 1
+            self._maj_affichage()
 
     def decrementer(self):
         """Slot du bouton "-" : retire 1 sans passer sous VALEUR_MIN."""
-        self._valeur -= 1
-        self._maj_affichage()
+        if self._valeur > VALEUR_MIN:
+            self._valeur -= 1
+            self._maj_affichage()
 
     def _maj_affichage(self):
-        """Met à jour le texte du label."""
+        """Met à jour le label et l'état (actif/inactif) des boutons."""
         self.label.setText(str(self._valeur))
+        self.bouton_plus.setEnabled(self._valeur < VALEUR_MAX)
+        self.bouton_moins.setEnabled(self._valeur > VALEUR_MIN)
 
 
 def main():
